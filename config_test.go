@@ -431,6 +431,21 @@ func TestMatchConditionFalse(t *testing.T) {
 	}
 }
 
+func TestMatchUser(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-user"),
+	}
+
+	hn, err := us.GetStrict("testhost", "HostName", "testuser")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hn != "hostname" {
+		t.Errorf("expected HostName to be %q, got %q", "hostname", hn)
+	}
+}
+
 func TestMatchFinal(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/match-final"),

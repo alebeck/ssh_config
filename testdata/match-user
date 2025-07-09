@@ -1,0 +1,2 @@
+Match host testhost user testuser
+    HostName hostname
