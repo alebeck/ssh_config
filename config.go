@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -43,6 +44,9 @@ import (
 const version = "1.3"
 
 var _ = version
+
+// modifiableKeys is a list of keys that can specify comma-separated values modifiable by "+", "-", "^".
+var modifiableKeys = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
 
 type configFinder func() string
 
@@ -95,6 +99,44 @@ func systemConfigFinder() string {
 	return filepath.Join("/", "etc", "ssh", "ssh_config")
 }
 
+// handleModifiers handles "+", "-", and "^" modifiers for some comma-separated values.
+func handleModifiers(v, key string) string {
+	if !(strings.HasPrefix(v, "+") || strings.HasPrefix(v, "-") ||
+		strings.HasPrefix(v, "^")) {
+		return v
+	}
+
+	cur := strings.Split(v[1:], ",")
+	def := strings.Split(Default(key), ",")
+	var out []string
+
+	switch v[0] {
+	case '+':
+		out = append(def, cur...)
+	case '-':
+		out = make([]string, 0, len(def))
+		for _, a := range def {
+			if !slices.Contains(cur, a) {
+				out = append(out, a)
+			}
+		}
+	case '^':
+		out = make([]string, 0, len(def)+len(cur))
+		for _, a := range cur {
+			if slices.Contains(def, a) {
+				out = append(out, a)
+			}
+		}
+		for _, a := range def {
+			if !slices.Contains(out, a) {
+				out = append(out, a)
+			}
+		}
+	}
+
+	return strings.Join(out, ",")
+}
+
 func findVal(c *Config, key string, ctx *MatchContext) (string, error) {
 	if c == nil {
 		return "", nil
@@ -103,6 +145,12 @@ func findVal(c *Config, key string, ctx *MatchContext) (string, error) {
 	if err != nil || val == "" {
 		return "", err
 	}
+
+	// check for special symbols within algorithm specifications
+	if slices.Contains(modifiableKeys, key) {
+		val = handleModifiers(val, key)
+	}
+
 	if err := validate(key, val); err != nil {
 		return "", err
 	}

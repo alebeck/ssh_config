@@ -1,0 +1,9 @@
+Host plus
+    Ciphers +a,b
+
+Host minus
+    Ciphers -aes128-cbc,aes192-cbc
+
+Host caret
+    # should move aes192-cbc to the front and ignore dummy
+    Ciphers ^aes192-cbc,dummy

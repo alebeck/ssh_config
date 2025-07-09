@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -539,5 +540,66 @@ func TestCustomFinder(t *testing.T) {
 	val := us.Get("wap", "User", "")
 	if val != "root" {
 		t.Errorf("expected to find User root, got %q", val)
+	}
+}
+
+func TestModifierPlus(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/modifiers"),
+	}
+
+	def := Default("Ciphers")
+	c, err := us.GetStrict("plus", "Ciphers", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def+",a,b" != c {
+		t.Errorf("expected Ciphers to be %q, got %q", def+",a,b", c)
+	}
+}
+
+func TestModifierMinus(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/modifiers"),
+	}
+
+	def := Default("Ciphers")
+	if !strings.Contains(def, "aes128-cbc") || !strings.Contains(def, "aes192-cbc") {
+		t.Errorf("expected default Ciphers to contain aes128-cbc or aes192-cbc, got %q", def)
+	}
+
+	c, err := us.GetStrict("minus", "Ciphers", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(c, "aes128-cbc") || strings.Contains(c, "aes192-cbc") {
+		t.Errorf("expected Ciphers not to contain aes128-cbc or aes192-cbc, got %q", c)
+	}
+}
+
+func TestModifierCaret(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/modifiers"),
+	}
+
+	def := Default("Ciphers")
+	if !strings.Contains(def, "aes192-cbc") {
+		t.Errorf("expected default Ciphers to contain aes192-cbc, got %q", def)
+	}
+	if strings.Contains(def, "dummy") {
+		t.Errorf("expected default Ciphers not to contain %q, got %q", "dummy", def)
+	}
+	c, err := us.GetStrict("caret", "Ciphers", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(c, "aes192-cbc") {
+		t.Errorf("expected Ciphers to start with %q, got %q", "aes192-cbc", c)
+	}
+	if strings.Contains(c, "dummy") {
+		t.Errorf("expected Ciphers not to contain %q, got %q", "dummy", c)
 	}
 }
