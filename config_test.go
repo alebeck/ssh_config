@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -51,7 +50,7 @@ func TestGet(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val := us.Get("wap", "User")
+	val := us.Get("wap", "User", "")
 	if val != "root" {
 		t.Errorf("expected to find User root, got %q", val)
 	}
@@ -62,7 +61,7 @@ func TestGetWithDefault(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val, err := us.GetStrict("wap", "PasswordAuthentication")
+	val, err := us.GetStrict("wap", "PasswordAuthentication", "")
 	if err != nil {
 		t.Fatalf("expected nil err, got %v", err)
 	}
@@ -76,7 +75,7 @@ func TestGetAllWithDefault(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val, err := us.GetAllStrict("wap", "PasswordAuthentication")
+	val, err := us.GetAllStrict("wap", "PasswordAuthentication", "")
 	if err != nil {
 		t.Fatalf("expected nil err, got %v", err)
 	}
@@ -90,7 +89,7 @@ func TestGetIdentities(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/identities"),
 	}
 
-	val, err := us.GetAllStrict("hasidentity", "IdentityFile")
+	val, err := us.GetAllStrict("hasidentity", "IdentityFile", "")
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
@@ -98,7 +97,7 @@ func TestGetIdentities(t *testing.T) {
 		t.Errorf(`expected ["file1"], got %v`, val)
 	}
 
-	val, err = us.GetAllStrict("has2identity", "IdentityFile")
+	val, err = us.GetAllStrict("has2identity", "IdentityFile", "")
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
@@ -106,7 +105,7 @@ func TestGetIdentities(t *testing.T) {
 		t.Errorf(`expected [\"f1\", \"f2\"], got %v`, val)
 	}
 
-	val, err = us.GetAllStrict("randomhost", "IdentityFile")
+	val, err = us.GetAllStrict("randomhost", "IdentityFile", "")
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
@@ -121,7 +120,7 @@ func TestGetIdentities(t *testing.T) {
 		}
 	}
 
-	val, err = us.GetAllStrict("protocol1", "IdentityFile")
+	val, err = us.GetAllStrict("protocol1", "IdentityFile", "")
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
@@ -135,7 +134,7 @@ func TestGetInvalidPort(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/invalid-port"),
 	}
 
-	val, err := us.GetStrict("test.test", "Port")
+	val, err := us.GetStrict("test.test", "Port", "")
 	if err == nil {
 		t.Fatalf("expected non-nil err, got nil")
 	}
@@ -152,7 +151,7 @@ func TestGetNotFoundNoDefault(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val, err := us.GetStrict("wap", "CanonicalDomains")
+	val, err := us.GetStrict("wap", "CanonicalDomains", "")
 	if err != nil {
 		t.Fatalf("expected nil err, got %v", err)
 	}
@@ -166,7 +165,7 @@ func TestGetAllNotFoundNoDefault(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val, err := us.GetAllStrict("wap", "CanonicalDomains")
+	val, err := us.GetAllStrict("wap", "CanonicalDomains", "")
 	if err != nil {
 		t.Fatalf("expected nil err, got %v", err)
 	}
@@ -180,29 +179,29 @@ func TestGetWildcard(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config3"),
 	}
 
-	val := us.Get("bastion.stage.i.us.example.net", "Port")
+	val := us.Get("bastion.stage.i.us.example.net", "Port", "")
 	if val != "22" {
 		t.Errorf("expected to find Port 22, got %q", val)
 	}
 
-	val = us.Get("bastion.net", "Port")
+	val = us.Get("bastion.net", "Port", "")
 	if val != "25" {
 		t.Errorf("expected to find Port 24, got %q", val)
 	}
 
-	val = us.Get("10.2.3.4", "Port")
+	val = us.Get("10.2.3.4", "Port", "")
 	if val != "23" {
 		t.Errorf("expected to find Port 23, got %q", val)
 	}
-	val = us.Get("101.2.3.4", "Port")
+	val = us.Get("101.2.3.4", "Port", "")
 	if val != "25" {
 		t.Errorf("expected to find Port 24, got %q", val)
 	}
-	val = us.Get("20.20.20.4", "Port")
+	val = us.Get("20.20.20.4", "Port", "")
 	if val != "24" {
 		t.Errorf("expected to find Port 24, got %q", val)
 	}
-	val = us.Get("20.20.20.20", "Port")
+	val = us.Get("20.20.20.20", "Port", "")
 	if val != "25" {
 		t.Errorf("expected to find Port 25, got %q", val)
 	}
@@ -213,7 +212,7 @@ func TestGetExtraSpaces(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/extraspace"),
 	}
 
-	val := us.Get("test.test", "Port")
+	val := us.Get("test.test", "Port", "")
 	if val != "1234" {
 		t.Errorf("expected to find Port 1234, got %q", val)
 	}
@@ -224,7 +223,7 @@ func TestGetCaseInsensitive(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config1"),
 	}
 
-	val := us.Get("wap", "uSER")
+	val := us.Get("wap", "uSER", "")
 	if val != "root" {
 		t.Errorf("expected to find User root, got %q", val)
 	}
@@ -235,7 +234,7 @@ func TestGetEmpty(t *testing.T) {
 		userConfigFinder:   nullConfigFinder,
 		systemConfigFinder: nullConfigFinder,
 	}
-	val, err := us.GetStrict("wap", "User")
+	val, err := us.GetStrict("wap", "User", "")
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
 	}
@@ -249,11 +248,11 @@ func TestGetEqsign(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/eqsign"),
 	}
 
-	val := us.Get("test.test", "Port")
+	val := us.Get("test.test", "Port", "")
 	if val != "1234" {
 		t.Errorf("expected to find Port 1234, got %q", val)
 	}
-	val = us.Get("test.test", "Port2")
+	val = us.Get("test.test", "Port2", "")
 	if val != "5678" {
 		t.Errorf("expected to find Port2 5678, got %q", val)
 	}
@@ -279,7 +278,7 @@ func TestInclude(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/include"),
 	}
-	val := us.Get("kevinburke.ssh_config.test.example.com", "Port")
+	val := us.Get("kevinburke.ssh_config.test.example.com", "Port", "")
 	if val != "4567" {
 		t.Errorf("expected to find Port=4567 in included file, got %q", val)
 	}
@@ -298,7 +297,7 @@ func TestIncludeSystem(t *testing.T) {
 	us := &UserSettings{
 		systemConfigFinder: testConfigFinder("testdata/include"),
 	}
-	val := us.Get("kevinburke.ssh_config.test.example.com", "Port")
+	val := us.Get("kevinburke.ssh_config.test.example.com", "Port", "")
 	if val != "4567" {
 		t.Errorf("expected to find Port=4567 in included file, got %q", val)
 	}
@@ -322,7 +321,7 @@ func TestIncludeRecursive(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/include-recursive"),
 	}
-	val, err := us.GetStrict("kevinburke.ssh_config.test.example.com", "Port")
+	val, err := us.GetStrict("kevinburke.ssh_config.test.example.com", "Port", "")
 	if err != ErrDepthExceeded {
 		t.Errorf("Recursive include: expected ErrDepthExceeded, got %v", err)
 	}
@@ -381,24 +380,84 @@ func TestMatches(t *testing.T) {
 		host := &Host{
 			Patterns: patterns,
 		}
-		got := host.Matches(tt.alias)
+		got := host.Matches(NewMatchContext(tt.alias, ""))
 		if got != tt.want {
 			t.Errorf("host(%q).Matches(%q): got %v, want %v", tt.in, tt.alias, got, tt.want)
 		}
 	}
 }
 
-func TestMatchUnsupported(t *testing.T) {
+func TestMatchAll(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-directive"),
+	}
+	port, err := us.GetStrict("testhost", "Port", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != "4567" {
+		t.Errorf("expected Port to be %q, got %q", "4567", port)
+	}
+}
+
+func TestMatchCondition(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/match-directive"),
 	}
 
-	_, err := us.GetStrict("test.test", "Port")
-	if err == nil {
-		t.Fatal("expected Match directive to error, didn't")
+	hn, err := us.GetStrict("testhost", "HostName", "")
+
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "ssh_config: Match directive parsing is unsupported") {
-		t.Errorf("wrong error: %v", err)
+	if hn != "hostname" {
+		t.Errorf("expected HostName to be %q, got %q", "hostname", hn)
+	}
+}
+
+func TestMatchConditionFalse(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-directive"),
+	}
+
+	hn, err := us.GetStrict("wronghost", "HostName", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hn != "" {
+		t.Errorf("expected HostName to be %q, got %q", "", hn)
+	}
+}
+
+func TestMatchFinal(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-final"),
+	}
+
+	port, err := us.GetStrict("testhost", "Port", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != "4567" {
+		t.Errorf("expected Port to be %q, got %q", "4567", port)
+	}
+}
+
+func TestMatchFinalAlreadySet(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-final"),
+	}
+
+	port, err := us.GetStrict("testhost2", "Port", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != "1234" {
+		t.Errorf("expected Port to be %q, got %q", "1234", port)
 	}
 }
 
@@ -407,7 +466,7 @@ func TestIndexInRange(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/config4"),
 	}
 
-	user, err := us.GetStrict("wap", "User")
+	user, err := us.GetStrict("wap", "User", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +480,7 @@ func TestDosLinesEndingsDecode(t *testing.T) {
 		userConfigFinder: testConfigFinder("testdata/dos-lines"),
 	}
 
-	user, err := us.GetStrict("wap", "User")
+	user, err := us.GetStrict("wap", "User", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +489,7 @@ func TestDosLinesEndingsDecode(t *testing.T) {
 		t.Errorf("expected User to be %q, got %q", "root", user)
 	}
 
-	host, err := us.GetStrict("wap2", "HostName")
+	host, err := us.GetStrict("wap2", "HostName", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +505,7 @@ func TestNoTrailingNewline(t *testing.T) {
 		systemConfigFinder: nullConfigFinder,
 	}
 
-	port, err := us.GetStrict("example", "Port")
+	port, err := us.GetStrict("example", "Port", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +521,7 @@ func TestCustomFinder(t *testing.T) {
 		return "testdata/config1"
 	})
 
-	val := us.Get("wap", "User")
+	val := us.Get("wap", "User", "")
 	if val != "root" {
 		t.Errorf("expected to find User root, got %q", val)
 	}

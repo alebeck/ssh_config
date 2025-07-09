@@ -15,7 +15,7 @@
 //
 //	f, _ := os.Open(filepath.Join(os.Getenv("HOME"), ".ssh", "config"))
 //	cfg, _ := ssh_config.Decode(f)
-//	for _, host := range cfg.Hosts {
+//	for _, host := range cfg.Blocks {
 //		fmt.Println("patterns:", host.Patterns)
 //		for _, node := range host.Nodes {
 //			fmt.Println(node.String())
@@ -24,9 +24,6 @@
 //
 //	// Write the cfg back to disk:
 //	fmt.Println(cfg.String())
-//
-// BUG: the Match directive is currently unsupported; parsing a config with
-// a Match directive will trigger an error.
 package ssh_config
 
 import (
@@ -72,6 +69,15 @@ func homedir() string {
 	}
 }
 
+func localUser() string {
+	user, err := osuser.Current()
+	if err == nil {
+		return user.Username
+	} else {
+		return ""
+	}
+}
+
 func userConfigFinder() string {
 	return filepath.Join(homedir(), ".ssh", "config")
 }
@@ -89,11 +95,11 @@ func systemConfigFinder() string {
 	return filepath.Join("/", "etc", "ssh", "ssh_config")
 }
 
-func findVal(c *Config, alias, key string) (string, error) {
+func findVal(c *Config, key string, ctx *MatchContext) (string, error) {
 	if c == nil {
 		return "", nil
 	}
-	val, err := c.Get(alias, key)
+	val, err := c.Get(key, ctx)
 	if err != nil || val == "" {
 		return "", err
 	}
@@ -103,11 +109,11 @@ func findVal(c *Config, alias, key string) (string, error) {
 	return val, nil
 }
 
-func findAll(c *Config, alias, key string) ([]string, error) {
+func findAll(c *Config, key string, ctx *MatchContext) ([]string, error) {
 	if c == nil {
 		return nil, nil
 	}
-	return c.GetAll(alias, key)
+	return c.GetAll(key, ctx)
 }
 
 // Get finds the first value for key within a declaration that matches the
@@ -118,8 +124,8 @@ func findAll(c *Config, alias, key string) ([]string, error) {
 // The match for key is case insensitive.
 //
 // Get is a wrapper around DefaultUserSettings.Get.
-func Get(alias, key string) string {
-	return DefaultUserSettings.Get(alias, key)
+func Get(alias, key, user string) string {
+	return DefaultUserSettings.Get(alias, key, user)
 }
 
 // GetAll retrieves zero or more directives for key for the given alias. GetAll
@@ -134,8 +140,8 @@ func Get(alias, key string) string {
 // The match for key is case insensitive.
 //
 // GetAll is a wrapper around DefaultUserSettings.GetAll.
-func GetAll(alias, key string) []string {
-	return DefaultUserSettings.GetAll(alias, key)
+func GetAll(alias, key, user string) []string {
+	return DefaultUserSettings.GetAll(alias, key, user)
 }
 
 // GetStrict finds the first value for key within a declaration that matches the
@@ -148,8 +154,8 @@ func GetAll(alias, key string) []string {
 // false.
 //
 // GetStrict is a wrapper around DefaultUserSettings.GetStrict.
-func GetStrict(alias, key string) (string, error) {
-	return DefaultUserSettings.GetStrict(alias, key)
+func GetStrict(alias, key, user string) (string, error) {
+	return DefaultUserSettings.GetStrict(alias, key, user)
 }
 
 // GetAllStrict retrieves zero or more directives for key for the given alias.
@@ -163,8 +169,8 @@ func GetStrict(alias, key string) (string, error) {
 // false.
 //
 // GetAllStrict is a wrapper around DefaultUserSettings.GetAllStrict.
-func GetAllStrict(alias, key string) ([]string, error) {
-	return DefaultUserSettings.GetAllStrict(alias, key)
+func GetAllStrict(alias, key, user string) ([]string, error) {
+	return DefaultUserSettings.GetAllStrict(alias, key, user)
 }
 
 // Get finds the first value for key within a declaration that matches the
@@ -173,8 +179,8 @@ func GetAllStrict(alias, key string) ([]string, error) {
 // disambiguate the latter cases.
 //
 // The match for key is case insensitive.
-func (u *UserSettings) Get(alias, key string) string {
-	val, err := u.GetStrict(alias, key)
+func (u *UserSettings) Get(alias, key, user string) string {
+	val, err := u.GetStrict(alias, key, user)
 	if err != nil {
 		return ""
 	}
@@ -187,8 +193,8 @@ func (u *UserSettings) Get(alias, key string) string {
 // cases.
 //
 // The match for key is case insensitive.
-func (u *UserSettings) GetAll(alias, key string) []string {
-	val, _ := u.GetAllStrict(alias, key)
+func (u *UserSettings) GetAll(alias, key, user string) []string {
+	val, _ := u.GetAllStrict(alias, key, user)
 	return val
 }
 
@@ -199,27 +205,37 @@ func (u *UserSettings) GetAll(alias, key string) []string {
 //
 // error will be non-nil if and only if a user's configuration file or the
 // system configuration file could not be parsed, and u.IgnoreErrors is false.
-func (u *UserSettings) GetStrict(alias, key string) (string, error) {
+func (u *UserSettings) GetStrict(alias, key, user string) (string, error) {
 	u.doLoadConfigs()
 	//lint:ignore S1002 I prefer it this way
 	if u.onceErr != nil && u.IgnoreErrors == false {
 		return "", u.onceErr
 	}
+
+	ctx := NewMatchContext(alias, user)
+
 	// TODO this is getting repetitive
 	if u.customConfig != nil {
-		val, err := findVal(u.customConfig, alias, key)
+		val, err := findVal(u.customConfig, key, ctx)
 		if err != nil || val != "" {
 			return val, err
 		}
 	}
-	val, err := findVal(u.userConfig, alias, key)
+	val, err := findVal(u.userConfig, key, ctx)
 	if err != nil || val != "" {
 		return val, err
 	}
-	val2, err2 := findVal(u.systemConfig, alias, key)
+	val2, err2 := findVal(u.systemConfig, key, ctx)
 	if err2 != nil || val2 != "" {
 		return val2, err2
 	}
+
+	// No value found until now, so check final blocks
+	val3, err3 := ctx.matchFinal(key)
+	if err3 != nil || val3 != "" {
+		return val3, err3
+	}
+
 	return Default(key), nil
 }
 
@@ -231,26 +247,36 @@ func (u *UserSettings) GetStrict(alias, key string) (string, error) {
 // The returned error will be non-nil if and only if a user's configuration file
 // or the system configuration file could not be parsed, and u.IgnoreErrors is
 // false.
-func (u *UserSettings) GetAllStrict(alias, key string) ([]string, error) {
+func (u *UserSettings) GetAllStrict(alias, key, user string) ([]string, error) {
 	u.doLoadConfigs()
 	//lint:ignore S1002 I prefer it this way
 	if u.onceErr != nil && u.IgnoreErrors == false {
 		return nil, u.onceErr
 	}
+
+	ctx := NewMatchContext(alias, user)
+
 	if u.customConfig != nil {
-		val, err := findAll(u.customConfig, alias, key)
+		val, err := findAll(u.customConfig, key, ctx)
 		if err != nil || val != nil {
 			return val, err
 		}
 	}
-	val, err := findAll(u.userConfig, alias, key)
+	val, err := findAll(u.userConfig, key, ctx)
 	if err != nil || val != nil {
 		return val, err
 	}
-	val2, err2 := findAll(u.systemConfig, alias, key)
+	val2, err2 := findAll(u.systemConfig, key, ctx)
 	if err2 != nil || val2 != nil {
 		return val2, err2
 	}
+
+	// No value found until now, so check final blocks
+	val3, err3 := ctx.matchFinalAll(key)
+	if err3 != nil || val3 != nil {
+		return val3, err3
+	}
+
 	// TODO: IdentityFile has multiple default values that we should return.
 	if def := Default(key); def != "" {
 		return []string{def}, nil
@@ -363,11 +389,132 @@ func decodeBytes(b []byte, system bool, depth uint8) (c *Config, err error) {
 
 // Config represents an SSH config file.
 type Config struct {
-	// A list of hosts to match against. The file begins with an implicit
+	// A list of blocks to match against. The file begins with an implicit
 	// "Host *" declaration matching all hosts.
-	Hosts    []*Host
+	Blocks   []Block
 	depth    uint8
 	position Position
+}
+
+// MatchContext holds information about previously matched values,
+// to be used for Match block matching.
+type MatchContext struct {
+	// Remote target user
+	User string
+	// Final host name
+	Host string
+	// Local user
+	LocalUser string
+	// Original Host, a.k.a. alias
+	OriginalHost string
+	// Final blocks to parse after matching
+	FinalBlocks []Block
+}
+
+func NewMatchContext(alias, user string) *MatchContext {
+	return &MatchContext{
+		User:         user,  // initial
+		Host:         alias, // initial
+		LocalUser:    localUser(),
+		OriginalHost: alias,
+	}
+}
+
+func (ctx *MatchContext) matchFinal(key string) (string, error) {
+	for _, block := range ctx.FinalBlocks {
+		found, err := handleBlock(block, key, nil)
+		if err != nil {
+			return "", err
+		}
+		if found != "" {
+			return found, nil
+		}
+	}
+	return "", nil
+}
+
+func (ctx *MatchContext) matchFinalAll(key string) (all []string, err error) {
+	for _, block := range ctx.FinalBlocks {
+		all, err = handleBlockAll(block, all, key, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return all, nil
+}
+
+func handleBlock(block Block, key string, ctx *MatchContext) (string, error) {
+	lowerKey := strings.ToLower(key)
+
+	for _, node := range block.GetNodes() {
+		switch t := node.(type) {
+		case *Empty:
+			continue
+		case *KV:
+			// "keys are case insensitive" per the spec
+			lkey := strings.ToLower(t.Key)
+			if lkey == "match" {
+				panic("can't handle Match directives")
+			}
+			if lkey == lowerKey {
+				return t.Value, nil
+			}
+			// Add values to context
+			if ctx != nil {
+				switch lkey {
+				case "user":
+					ctx.User = t.Value
+				case "hostname":
+					ctx.Host = t.Value
+				}
+			}
+		case *Include:
+			val := t.Get(key, ctx)
+			if val != "" {
+				return val, nil
+			}
+		default:
+			return "", fmt.Errorf("unknown Node type %v", t)
+		}
+	}
+	return "", nil
+}
+
+func handleBlockAll(block Block, all []string, key string, ctx *MatchContext) ([]string, error) {
+	lowerKey := strings.ToLower(key)
+
+	for _, node := range block.GetNodes() {
+		switch t := node.(type) {
+		case *Empty:
+			continue
+		case *KV:
+			// "keys are case insensitive" per the spec
+			lkey := strings.ToLower(t.Key)
+			if lkey == "match" {
+				panic("can't handle Match directives")
+			}
+			if lkey == lowerKey {
+				all = append(all, t.Value)
+			}
+			// Add values to context
+			if ctx != nil {
+				switch lkey {
+				case "user":
+					ctx.User = t.Value
+				case "hostname":
+					ctx.Host = t.Value
+				}
+			}
+		case *Include:
+			val, _ := t.GetAll(key, ctx)
+			if len(val) > 0 {
+				all = append(all, val...)
+			}
+		default:
+			return nil, fmt.Errorf("unknown Node type %v", t)
+		}
+	}
+	return all, nil
 }
 
 // Get finds the first value in the configuration that matches the alias and
@@ -375,71 +522,45 @@ type Config struct {
 // Config contains an invalid conditional Include value.
 //
 // The match for key is case insensitive.
-func (c *Config) Get(alias, key string) (string, error) {
-	lowerKey := strings.ToLower(key)
-	for _, host := range c.Hosts {
-		if !host.Matches(alias) {
+func (c *Config) Get(key string, ctx *MatchContext) (string, error) {
+	for _, block := range c.Blocks {
+		if block.IsFinal() {
+			ctx.FinalBlocks = append(ctx.FinalBlocks, block)
 			continue
 		}
-		for _, node := range host.Nodes {
-			switch t := node.(type) {
-			case *Empty:
-				continue
-			case *KV:
-				// "keys are case insensitive" per the spec
-				lkey := strings.ToLower(t.Key)
-				if lkey == "match" {
-					panic("can't handle Match directives")
-				}
-				if lkey == lowerKey {
-					return t.Value, nil
-				}
-			case *Include:
-				val := t.Get(alias, key)
-				if val != "" {
-					return val, nil
-				}
-			default:
-				return "", fmt.Errorf("unknown Node type %v", t)
-			}
+		if !block.Matches(ctx) {
+			continue
+		}
+		found, err := handleBlock(block, key, ctx)
+		if err != nil {
+			return "", err
+		}
+		if found != "" {
+			return found, nil
 		}
 	}
+
 	return "", nil
 }
 
 // GetAll returns all values in the configuration that match the alias and
 // contains key, or nil if none are present.
-func (c *Config) GetAll(alias, key string) ([]string, error) {
-	lowerKey := strings.ToLower(key)
+func (c *Config) GetAll(key string, ctx *MatchContext) ([]string, error) {
 	all := []string(nil)
-	for _, host := range c.Hosts {
-		if !host.Matches(alias) {
+	var err error
+	for _, block := range c.Blocks {
+		if block.IsFinal() {
+			ctx.FinalBlocks = append(ctx.FinalBlocks, block)
 			continue
 		}
-		for _, node := range host.Nodes {
-			switch t := node.(type) {
-			case *Empty:
-				continue
-			case *KV:
-				// "keys are case insensitive" per the spec
-				lkey := strings.ToLower(t.Key)
-				if lkey == "match" {
-					panic("can't handle Match directives")
-				}
-				if lkey == lowerKey {
-					all = append(all, t.Value)
-				}
-			case *Include:
-				val, _ := t.GetAll(alias, key)
-				if len(val) > 0 {
-					all = append(all, val...)
-				}
-			default:
-				return nil, fmt.Errorf("unknown Node type %v", t)
-			}
+		if !block.Matches(ctx) {
+			continue
+		}
+		all, err = handleBlockAll(block, all, key, ctx)
+		if err != nil {
+			return nil, err
 		}
 	}
-
 	return all, nil
 }
 
@@ -454,8 +575,8 @@ func (c Config) MarshalText() ([]byte, error) {
 
 func marshal(c Config) *bytes.Buffer {
 	var buf bytes.Buffer
-	for i := range c.Hosts {
-		buf.WriteString(c.Hosts[i].String())
+	for i := range c.Blocks {
+		buf.WriteString(c.Blocks[i].String())
 	}
 	return &buf
 }
@@ -528,10 +649,22 @@ func NewPattern(s string) (*Pattern, error) {
 	return &Pattern{str: s, regex: r, not: negated}, nil
 }
 
-// Host describes a Host directive and the keywords that follow it.
-type Host struct {
-	// A list of host patterns that should match this host.
-	Patterns []*Pattern
+// Block describes either a Host or Match directive, which must
+// implement a Matches and a String method.
+type Block interface {
+	// GetNodes returns the nodes belonging to the Block
+	GetNodes() []Node
+	// SetNodes sets the nodes belonging to the Block
+	SetNodes(nodes []Node)
+	// Matches returns true if the Block matches the passed MatchContext
+	Matches(ctx *MatchContext) bool
+	// String prints the Block as it would appear in a config file
+	String() string
+	// IsFinal indicates whether this match block is final
+	IsFinal() bool
+}
+
+type BlockData struct {
 	// A Node is either a key/value pair or a comment line.
 	Nodes []Node
 	// EOLComment is the comment (if any) terminating the Host line.
@@ -543,15 +676,36 @@ type Host struct {
 	leadingSpace int // TODO: handle spaces vs tabs here.
 	// The file starts with an implicit "Host *" declaration.
 	implicit bool
+	// Final indicates whether this match block is final
+	Final bool
+}
+
+// Host describes a Host directive and the keywords that follow it.
+type Host struct {
+	// A list of host patterns that should match this host.
+	Patterns []*Pattern
+	*BlockData
+}
+
+func (h *Host) GetNodes() []Node {
+	return h.Nodes
+}
+
+func (h *Host) SetNodes(nodes []Node) {
+	h.Nodes = nodes
+}
+
+func (h *Host) IsFinal() bool {
+	return h.Final
 }
 
 // Matches returns true if the Host matches for the given alias. For
 // a description of the rules that provide a match, see the manpage for
 // ssh_config.
-func (h *Host) Matches(alias string) bool {
+func (h *Host) Matches(ctx *MatchContext) bool {
 	found := false
 	for i := range h.Patterns {
-		if h.Patterns[i].regex.MatchString(alias) {
+		if h.Patterns[i].regex.MatchString(ctx.OriginalHost) {
 			if h.Patterns[i].not {
 				// Negated match. "A pattern entry may be negated by prefixing
 				// it with an exclamation mark (`!'). If a negated entry is
@@ -598,6 +752,52 @@ func (h *Host) String() string {
 		buf.WriteByte('\n')
 	}
 	return buf.String()
+}
+
+type Match struct {
+	// Patterns is a map of key -> Pattern entries, e.g. "Address" -> Pattern("127.0.0.*")
+	Patterns map[string]*Pattern
+	*BlockData
+}
+
+func (m *Match) GetNodes() []Node {
+	return m.Nodes
+}
+
+func (m *Match) SetNodes(nodes []Node) {
+	m.Nodes = nodes
+}
+
+func (m *Match) Matches(ctx *MatchContext) bool {
+	// All patterns have to match to make the block apply.
+	// If a context value is empty, the pattern is considered no match.
+	for k, p := range m.Patterns {
+		var comp string
+		switch k {
+		case "host":
+			comp = ctx.Host
+		case "user":
+			comp = ctx.User
+		case "originalhost":
+			comp = ctx.OriginalHost
+		case "localuser":
+			comp = ctx.LocalUser
+		default:
+			panic("unknown Match directive key: " + k)
+		}
+		if comp == "" || p.not == p.regex.MatchString(comp) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Match) String() string {
+	panic("Match does not support String() serialization for now")
+}
+
+func (m *Match) IsFinal() bool {
+	return m.Final
 }
 
 // Node represents a line in a Config.
@@ -760,7 +960,7 @@ func (i *Include) Pos() Position {
 
 // Get finds the first value in the Include statement matching the alias and the
 // given key.
-func (inc *Include) Get(alias, key string) string {
+func (inc *Include) Get(key string, ctx *MatchContext) string {
 	inc.mu.Lock()
 	defer inc.mu.Unlock()
 	// TODO: we search files in any order which is not correct
@@ -769,7 +969,7 @@ func (inc *Include) Get(alias, key string) string {
 		if cfg == nil {
 			panic("nil cfg")
 		}
-		val, err := cfg.Get(alias, key)
+		val, err := cfg.Get(key, ctx)
 		if err == nil && val != "" {
 			return val
 		}
@@ -779,7 +979,7 @@ func (inc *Include) Get(alias, key string) string {
 
 // GetAll finds all values in the Include statement matching the alias and the
 // given key.
-func (inc *Include) GetAll(alias, key string) ([]string, error) {
+func (inc *Include) GetAll(key string, ctx *MatchContext) ([]string, error) {
 	inc.mu.Lock()
 	defer inc.mu.Unlock()
 	var vals []string
@@ -790,7 +990,7 @@ func (inc *Include) GetAll(alias, key string) ([]string, error) {
 		if cfg == nil {
 			panic("nil cfg")
 		}
-		val, err := cfg.GetAll(alias, key)
+		val, err := cfg.GetAll(key, ctx)
 		if err == nil && len(val) != 0 {
 			// In theory if SupportsMultiple was false for this key we could
 			// stop looking here. But the caller has asked us to find all
@@ -828,11 +1028,13 @@ func init() {
 
 func newConfig() *Config {
 	return &Config{
-		Hosts: []*Host{
+		Blocks: []Block{
 			&Host{
-				implicit: true,
 				Patterns: []*Pattern{matchAll},
-				Nodes:    make([]Node, 0),
+				BlockData: &BlockData{
+					implicit: true,
+					Nodes:    make([]Node, 0),
+				},
 			},
 		},
 		depth: 0,

@@ -11,8 +11,8 @@ import (
 func ExampleHost_Matches() {
 	pat, _ := ssh_config.NewPattern("test.*.example.com")
 	host := &ssh_config.Host{Patterns: []*ssh_config.Pattern{pat}}
-	fmt.Println(host.Matches("test.stage.example.com"))
-	fmt.Println(host.Matches("othersubdomain.example.com"))
+	fmt.Println(host.Matches(ssh_config.NewMatchContext("test.stage.example.com", "")))
+	fmt.Println(host.Matches(ssh_config.NewMatchContext("othersubdomain.example.com", "")))
 	// Output:
 	// true
 	// false
@@ -21,8 +21,8 @@ func ExampleHost_Matches() {
 func ExamplePattern() {
 	pat, _ := ssh_config.NewPattern("*")
 	host := &ssh_config.Host{Patterns: []*ssh_config.Pattern{pat}}
-	fmt.Println(host.Matches("test.stage.example.com"))
-	fmt.Println(host.Matches("othersubdomain.any.any"))
+	fmt.Println(host.Matches(ssh_config.NewMatchContext("test.stage.example.com", "")))
+	fmt.Println(host.Matches(ssh_config.NewMatchContext("othersubdomain.example.com", "")))
 	// Output:
 	// true
 	// true
@@ -35,7 +35,8 @@ Host *.example.com
 `
 
 	cfg, _ := ssh_config.Decode(strings.NewReader(config))
-	val, _ := cfg.Get("test.example.com", "Compression")
+	ctx := ssh_config.NewMatchContext("test.example.com", "")
+	val, _ := cfg.Get("Compression", ctx)
 	fmt.Println(val)
 	// Output: yes
 }
@@ -54,5 +55,5 @@ func ExampleUserSettings_ConfigFinder() {
 	u.ConfigFinder(func() string {
 		return filepath.Join("testdata", "test_config")
 	})
-	u.Get("example.com", "Host")
+	u.Get("example.com", "Host", "")
 }

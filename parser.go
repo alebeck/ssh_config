@@ -2,9 +2,13 @@ package ssh_config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 )
+
+// TODO extend this by at least "localnetwork"
+var allowedMatchKeywords = []string{"host", "originalhost", "user", "localuser"}
 
 type sshParser struct {
 	flow          chan token
@@ -105,9 +109,66 @@ func (p *sshParser) parseKV() sshParserStateFn {
 		comment = tok.val
 	}
 	if strings.ToLower(key.val) == "match" {
-		// https://github.com/kevinburke/ssh_config/issues/6
-		p.raiseErrorf(val, "ssh_config: Match directive parsing is unsupported")
-		return nil
+		// val.val at this point could be e.g. "example.com       "
+		hostval := strings.TrimRightFunc(val.val, unicode.IsSpace)
+		spaceBeforeComment := val.val[len(hostval):]
+		val.val = hostval
+
+		hostvalLower := strings.ToLower(hostval)
+		if strings.HasPrefix(hostvalLower, "canonical") {
+			p.raiseErrorf(val, fmt.Sprintf("'Match Canonical' is not supported"))
+			return nil
+		}
+		if hostvalLower == "final" {
+			p.raiseErrorf(val, fmt.Sprintf("'Match Final' without 'All' is not supported"))
+			return nil
+		}
+		if hostvalLower == "final all" || hostvalLower == "all" {
+			// Add equivalent "Host *" block
+			pattern, _ := NewPattern("*")
+			p.config.Blocks = append(p.config.Blocks, &Host{
+				Patterns: []*Pattern{pattern},
+				BlockData: &BlockData{
+					Nodes:              make([]Node, 0),
+					EOLComment:         comment,
+					spaceBeforeComment: spaceBeforeComment,
+					hasEquals:          hasEquals,
+					Final:              hostvalLower == "final all",
+				},
+			})
+			return p.parseStart
+		}
+
+		strPatterns := strings.Split(strings.ToLower(val.val), " ")
+		if len(strPatterns)%2 != 0 {
+			p.raiseErrorf(val, fmt.Sprintf("Invalid Match pattern (has to be key-value pairs): %v", val.val))
+			return nil
+		}
+
+		patterns := make(map[string]*Pattern, len(strPatterns)/2)
+		for i := 0; i < len(strPatterns); i += 2 {
+			if !slices.Contains(allowedMatchKeywords, strPatterns[i]) {
+				p.raiseErrorf(val, fmt.Sprintf("Match keyword not supported: %v", strPatterns[i]))
+				return nil
+			}
+			pat, err := NewPattern(strPatterns[i+1])
+			if err != nil {
+				p.raiseErrorf(val, fmt.Sprintf("Invalid Match pattern: %v", err))
+				return nil
+			}
+			patterns[strPatterns[i]] = pat
+		}
+
+		p.config.Blocks = append(p.config.Blocks, &Match{
+			Patterns: patterns,
+			BlockData: &BlockData{
+				Nodes:              make([]Node, 0),
+				EOLComment:         comment,
+				spaceBeforeComment: spaceBeforeComment,
+				hasEquals:          hasEquals,
+			},
+		})
+		return p.parseStart
 	}
 	if strings.ToLower(key.val) == "host" {
 		strPatterns := strings.Split(val.val, " ")
@@ -127,16 +188,18 @@ func (p *sshParser) parseKV() sshParserStateFn {
 		hostval := strings.TrimRightFunc(val.val, unicode.IsSpace)
 		spaceBeforeComment := val.val[len(hostval):]
 		val.val = hostval
-		p.config.Hosts = append(p.config.Hosts, &Host{
-			Patterns:           patterns,
-			Nodes:              make([]Node, 0),
-			EOLComment:         comment,
-			spaceBeforeComment: spaceBeforeComment,
-			hasEquals:          hasEquals,
+		p.config.Blocks = append(p.config.Blocks, &Host{
+			Patterns: patterns,
+			BlockData: &BlockData{
+				Nodes:              make([]Node, 0),
+				EOLComment:         comment,
+				spaceBeforeComment: spaceBeforeComment,
+				hasEquals:          hasEquals,
+			},
 		})
 		return p.parseStart
 	}
-	lastHost := p.config.Hosts[len(p.config.Hosts)-1]
+	lastBlock := p.config.Blocks[len(p.config.Blocks)-1]
 	if strings.ToLower(key.val) == "include" {
 		inc, err := NewInclude(strings.Split(val.val, " "), hasEquals, key.Position, comment, p.system, p.depth+1)
 		if err == ErrDepthExceeded {
@@ -147,7 +210,7 @@ func (p *sshParser) parseKV() sshParserStateFn {
 			p.raiseErrorf(val, fmt.Sprintf("Error parsing Include directive: %v", err))
 			return nil
 		}
-		lastHost.Nodes = append(lastHost.Nodes, inc)
+		lastBlock.SetNodes(append(lastBlock.GetNodes(), inc))
 		return p.parseStart
 	}
 	shortval := strings.TrimRightFunc(val.val, unicode.IsSpace)
@@ -161,19 +224,19 @@ func (p *sshParser) parseKV() sshParserStateFn {
 		leadingSpace:    key.Position.Col - 1,
 		position:        key.Position,
 	}
-	lastHost.Nodes = append(lastHost.Nodes, kv)
+	lastBlock.SetNodes(append(lastBlock.GetNodes(), kv))
 	return p.parseStart
 }
 
 func (p *sshParser) parseComment() sshParserStateFn {
 	comment := p.getToken()
-	lastHost := p.config.Hosts[len(p.config.Hosts)-1]
-	lastHost.Nodes = append(lastHost.Nodes, &Empty{
+	lastHost := p.config.Blocks[len(p.config.Blocks)-1]
+	lastHost.SetNodes(append(lastHost.GetNodes(), &Empty{
 		Comment: comment.val,
 		// account for the "#" as well
 		leadingSpace: comment.Position.Col - 2,
 		position:     comment.Position,
-	})
+	}))
 	return p.parseStart
 }
 
