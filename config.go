@@ -86,14 +86,19 @@ func userConfigFinder() string {
 	return filepath.Join(homedir(), ".ssh", "config")
 }
 
+// MakeDefaultUserSettings creates a new UserSettings instance with default settings.
+func MakeDefaultUserSettings() *UserSettings {
+	return &UserSettings{
+		IgnoreErrors:       false,
+		systemConfigFinder: systemConfigFinder,
+		userConfigFinder:   userConfigFinder,
+	}
+}
+
 // DefaultUserSettings is the default UserSettings and is used by Get and
 // GetStrict. It checks both $HOME/.ssh/config and /etc/ssh/ssh_config for keys,
 // and it will return parse errors (if any) instead of swallowing them.
-var DefaultUserSettings = &UserSettings{
-	IgnoreErrors:       false,
-	systemConfigFinder: systemConfigFinder,
-	userConfigFinder:   userConfigFinder,
-}
+var DefaultUserSettings = MakeDefaultUserSettings()
 
 func systemConfigFinder() string {
 	return filepath.Join("/", "etc", "ssh", "ssh_config")
