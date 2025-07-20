@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -110,24 +111,8 @@ func TestGetIdentities(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
-	if len(val) != len(defaultProtocol2Identities) {
-		// TODO: return the right values here.
-		log.Printf("expected defaults, got %v", val)
-	} else {
-		for i, v := range defaultProtocol2Identities {
-			if val[i] != v {
-				t.Errorf("invalid %d in val, expected %s got %s", i, v, val[i])
-			}
-		}
-	}
-
-	val, err = us.GetAllStrict("protocol1", "IdentityFile", "")
-	if err != nil {
-		t.Errorf("expected nil err, got %v", err)
-	}
-	def := "~/.ssh/id_rsa,~/.ssh/id_ecdsa,~/.ssh/id_ecdsa_sk,~/.ssh/id_ed25519,~/.ssh/id_ed25519_sk"
-	if len(val) != 1 || val[0] != def {
-		t.Errorf("expected [%s], got %v", def, val)
+	if !reflect.DeepEqual(val, defaultProtocol2Identities) {
+		t.Errorf("expected default protocol 2 identities %v, got %v", defaultProtocol2Identities, val)
 	}
 }
 

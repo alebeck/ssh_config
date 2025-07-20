@@ -333,6 +333,11 @@ func (u *UserSettings) GetAllStrict(alias, key, user string) ([]string, error) {
 	if def := Default(key); def != "" {
 		return []string{def}, nil
 	}
+
+	if key == "IdentityFile" {
+		return defaultProtocol2Identities, nil
+	}
+
 	return []string{}, nil
 }
 
