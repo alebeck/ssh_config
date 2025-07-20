@@ -125,8 +125,9 @@ func TestGetIdentities(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil err, got %v", err)
 	}
-	if len(val) != 1 || val[0] != "~/.ssh/identity" {
-		t.Errorf("expected [\"~/.ssh/identity\"], got %v", val)
+	def := "~/.ssh/id_rsa,~/.ssh/id_ecdsa,~/.ssh/id_ecdsa_sk,~/.ssh/id_ed25519,~/.ssh/id_ed25519_sk"
+	if len(val) != 1 || val[0] != def {
+		t.Errorf("expected [%s], got %v", def, val)
 	}
 }
 

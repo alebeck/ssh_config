@@ -117,7 +117,7 @@ var defaults = map[string]string{
 	// HostName has a dynamic default (the value passed at the command line).
 
 	strings.ToLower("IdentitiesOnly"): "no",
-	strings.ToLower("IdentityFile"):   "~/.ssh/identity",
+	strings.ToLower("IdentityFile"):   "~/.ssh/id_rsa,~/.ssh/id_ecdsa,~/.ssh/id_ecdsa_sk,~/.ssh/id_ed25519,~/.ssh/id_ed25519_sk",
 
 	// IPQoS has a dynamic default based on interactive or non-interactive
 	// sessions.

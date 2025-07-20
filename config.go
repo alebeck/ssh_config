@@ -325,7 +325,6 @@ func (u *UserSettings) GetAllStrict(alias, key, user string) ([]string, error) {
 		return val3, err3
 	}
 
-	// TODO: IdentityFile has multiple default values that we should return.
 	if def := Default(key); def != "" {
 		return []string{def}, nil
 	}
