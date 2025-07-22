@@ -114,49 +114,45 @@ func (p *sshParser) parseKV() sshParserStateFn {
 		spaceBeforeComment := val.val[len(hostval):]
 		val.val = hostval
 
-		hostvalLower := strings.ToLower(hostval)
-		if strings.HasPrefix(hostvalLower, "canonical") {
-			p.raiseErrorf(val, fmt.Sprintf("'Match Canonical' is not supported"))
-			return nil
-		}
-		if hostvalLower == "final" {
-			p.raiseErrorf(val, fmt.Sprintf("'Match Final' without 'All' is not supported"))
-			return nil
-		}
-		if hostvalLower == "final all" || hostvalLower == "all" {
-			// Add equivalent "Host *" block
-			pattern, _ := NewPattern("*")
-			p.config.Blocks = append(p.config.Blocks, &Host{
-				Patterns: []*Pattern{pattern},
-				BlockData: &BlockData{
-					Nodes:              make([]Node, 0),
-					EOLComment:         comment,
-					spaceBeforeComment: spaceBeforeComment,
-					hasEquals:          hasEquals,
-					Final:              hostvalLower == "final all",
-				},
-			})
-			return p.parseStart
-		}
-
 		strPatterns := strings.Split(strings.ToLower(val.val), " ")
-		if len(strPatterns)%2 != 0 {
-			p.raiseErrorf(val, fmt.Sprintf("Invalid Match pattern (has to be key-value pairs): %v", val.val))
-			return nil
-		}
-
 		patterns := make(map[string]*Pattern, len(strPatterns)/2)
-		for i := 0; i < len(strPatterns); i += 2 {
-			if !slices.Contains(allowedMatchKeywords, strPatterns[i]) {
-				p.raiseErrorf(val, fmt.Sprintf("Match keyword not supported: %v", strPatterns[i]))
+		final := false
+
+	loop:
+		for i := 0; i < len(strPatterns); i++ {
+			k := strPatterns[i]
+
+			switch k {
+			case "canonical":
+				p.raiseErrorf(val, fmt.Sprintf("'canonical' keyword not supported"))
+				return nil
+			case "final":
+				final = true
+				continue
+			case "all":
+				if !(i == 1 && strPatterns[i-1] == "final" && len(strPatterns) == 2) && !(i == 0 && len(strPatterns) == 1) {
+					p.raiseErrorf(val, fmt.Sprintf("'all' keyword must be alone or immediately after 'final'"))
+					return nil
+				}
+				break loop // no patterns ^= always matches
+			}
+
+			if !slices.Contains(allowedMatchKeywords, k) {
+				p.raiseErrorf(val, fmt.Sprintf("Match keyword not supported: %v", k))
 				return nil
 			}
-			pat, err := NewPattern(strPatterns[i+1])
+
+			i++
+			if i >= len(strPatterns) {
+				p.raiseErrorf(val, fmt.Sprintf("No value found after Match keyword %q", k))
+				return nil
+			}
+			pat, err := NewPattern(strPatterns[i])
 			if err != nil {
 				p.raiseErrorf(val, fmt.Sprintf("Invalid Match pattern: %v", err))
 				return nil
 			}
-			patterns[strPatterns[i]] = pat
+			patterns[k] = pat
 		}
 
 		p.config.Blocks = append(p.config.Blocks, &Match{
@@ -166,6 +162,7 @@ func (p *sshParser) parseKV() sshParserStateFn {
 				EOLComment:         comment,
 				spaceBeforeComment: spaceBeforeComment,
 				hasEquals:          hasEquals,
+				Final:              final,
 			},
 		})
 		return p.parseStart

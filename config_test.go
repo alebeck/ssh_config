@@ -463,6 +463,21 @@ func TestMatchFinalAlreadySet(t *testing.T) {
 	}
 }
 
+func TestMatchFinalWithCriterion(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-final"),
+	}
+
+	port, err := us.GetStrict("testhost3", "Port", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != "3333" {
+		t.Errorf("expected Port to be %q, got %q", "3333", port)
+	}
+}
+
 func TestIndexInRange(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/config4"),

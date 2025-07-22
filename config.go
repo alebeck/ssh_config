@@ -479,6 +479,9 @@ func NewMatchContext(alias, user string) *MatchContext {
 
 func (ctx *MatchContext) matchFinal(key string) (string, error) {
 	for _, block := range ctx.FinalBlocks {
+		if !block.Matches(ctx) {
+			continue
+		}
 		found, err := handleBlock(block, key, nil)
 		if err != nil {
 			return "", err
@@ -492,6 +495,9 @@ func (ctx *MatchContext) matchFinal(key string) (string, error) {
 
 func (ctx *MatchContext) matchFinalAll(key string) (all []string, err error) {
 	for _, block := range ctx.FinalBlocks {
+		if !block.Matches(ctx) {
+			continue
+		}
 		all, err = handleBlockAll(block, all, key, nil)
 		if err != nil {
 			return nil, err
