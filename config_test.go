@@ -433,6 +433,36 @@ func TestMatchUser(t *testing.T) {
 	}
 }
 
+func TestMatchUserFirst(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-user-first"),
+	}
+
+	p, err := us.GetStrict("testhost", "Port", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p != "1111" {
+		t.Errorf("expected Port to be %q, got %q", "1111", p)
+	}
+}
+
+func TestMatchUserFirstMultiple(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/match-user-first"),
+	}
+
+	ids, err := us.GetAllStrict("testhost", "IdentityFile", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 {
+		t.Errorf("expected 2 IdentityFiles, got %d", len(ids))
+	}
+}
+
 func TestMatchFinal(t *testing.T) {
 	us := &UserSettings{
 		userConfigFinder: testConfigFinder("testdata/match-final"),

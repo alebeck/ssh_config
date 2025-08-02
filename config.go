@@ -506,6 +506,22 @@ func (ctx *MatchContext) matchFinalAll(key string) (all []string, err error) {
 	return all, nil
 }
 
+func (ctx *MatchContext) update(lowerKey, val string) {
+	if ctx == nil {
+		return
+	}
+	switch lowerKey {
+	case "user":
+		if ctx.User == "" {
+			ctx.User = val
+		}
+	case "hostname":
+		if ctx.Host == "" {
+			ctx.Host = val
+		}
+	}
+}
+
 func handleBlock(block Block, key string, ctx *MatchContext) (string, error) {
 	lowerKey := strings.ToLower(key)
 
@@ -523,14 +539,7 @@ func handleBlock(block Block, key string, ctx *MatchContext) (string, error) {
 				return t.Value, nil
 			}
 			// Add values to context
-			if ctx != nil {
-				switch lkey {
-				case "user":
-					ctx.User = t.Value
-				case "hostname":
-					ctx.Host = t.Value
-				}
-			}
+			ctx.update(lkey, t.Value)
 		case *Include:
 			val := t.Get(key, ctx)
 			if val != "" {
@@ -559,15 +568,7 @@ func handleBlockAll(block Block, all []string, key string, ctx *MatchContext) ([
 			if lkey == lowerKey {
 				all = append(all, t.Value)
 			}
-			// Add values to context
-			if ctx != nil {
-				switch lkey {
-				case "user":
-					ctx.User = t.Value
-				case "hostname":
-					ctx.Host = t.Value
-				}
-			}
+			ctx.update(lkey, t.Value)
 		case *Include:
 			val, _ := t.GetAll(key, ctx)
 			if len(val) > 0 {
