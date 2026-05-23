@@ -804,8 +804,12 @@ func (h *Host) String() string {
 				buf.WriteString(" ")
 			}
 		}
-		buf.WriteString(h.spaceBeforeComment)
 		if h.EOLComment != "" {
+			if h.spaceBeforeComment != "" {
+				buf.WriteString(h.spaceBeforeComment)
+			} else {
+				buf.WriteByte(' ')
+			}
 			buf.WriteByte('#')
 			buf.WriteString(h.EOLComment)
 		}
@@ -881,6 +885,9 @@ type KV struct {
 	hasEquals       bool
 	leadingSpace    int // Space before the key. TODO handle spaces vs tabs.
 	position        Position
+	// rawValue preserves the original value text (including surrounding double
+	// quotes, if any) so that String() can roundtrip the config file faithfully.
+	rawValue string
 }
 
 // Pos returns k's Position.
@@ -897,9 +904,20 @@ func (k *KV) String() string {
 	if k.hasEquals {
 		equals = " = "
 	}
-	line := strings.Repeat(" ", int(k.leadingSpace)) + k.Key + equals + k.Value + k.spaceAfterValue
+	val := k.Value
+	if k.rawValue != "" {
+		val = k.rawValue
+	}
+	line := strings.Repeat(" ", int(k.leadingSpace)) + k.Key + equals + val
 	if k.Comment != "" {
+		if k.spaceAfterValue != "" {
+			line += k.spaceAfterValue
+		} else {
+			line += " "
+		}
 		line += "#" + k.Comment
+	} else {
+		line += k.spaceAfterValue
 	}
 	return line
 }
@@ -996,6 +1014,8 @@ func NewInclude(directives []string, hasEquals bool, pos Position, comment strin
 			path = directives[i]
 		} else if system {
 			path = filepath.Join("/etc/ssh", directives[i])
+		} else if strings.HasPrefix(directives[i], "~/") {
+			path = filepath.Join(homedir(), directives[i][2:])
 		} else {
 			path = filepath.Join(homedir(), ".ssh", directives[i])
 		}
