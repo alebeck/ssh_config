@@ -596,8 +596,8 @@ func TestModifierMinus(t *testing.T) {
 	}
 
 	def := Default("Ciphers")
-	if !strings.Contains(def, "aes128-cbc") || !strings.Contains(def, "aes192-cbc") {
-		t.Errorf("expected default Ciphers to contain aes128-cbc or aes192-cbc, got %q", def)
+	if !strings.Contains(def, "aes128-ctr") || !strings.Contains(def, "aes192-ctr") {
+		t.Errorf("expected default Ciphers to contain aes128-ctr or aes192-ctr, got %q", def)
 	}
 
 	c, err := us.GetStrict("minus", "Ciphers", "")
@@ -605,8 +605,8 @@ func TestModifierMinus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(c, "aes128-cbc") || strings.Contains(c, "aes192-cbc") {
-		t.Errorf("expected Ciphers not to contain aes128-cbc or aes192-cbc, got %q", c)
+	if strings.Contains(c, "aes128-ctr") || strings.Contains(c, "aes192-ctr") {
+		t.Errorf("expected Ciphers not to contain aes128-ctr or aes192-ctr, got %q", c)
 	}
 }
 
@@ -616,8 +616,8 @@ func TestModifierCaret(t *testing.T) {
 	}
 
 	def := Default("Ciphers")
-	if !strings.Contains(def, "aes192-cbc") {
-		t.Errorf("expected default Ciphers to contain aes192-cbc, got %q", def)
+	if !strings.Contains(def, "aes192-ctr") {
+		t.Errorf("expected default Ciphers to contain aes192-ctr, got %q", def)
 	}
 	if strings.Contains(def, "dummy") {
 		t.Errorf("expected default Ciphers not to contain %q, got %q", "dummy", def)
@@ -627,10 +627,117 @@ func TestModifierCaret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(c, "aes192-cbc") {
-		t.Errorf("expected Ciphers to start with %q, got %q", "aes192-cbc", c)
+	if !strings.HasPrefix(c, "aes192-ctr") {
+		t.Errorf("expected Ciphers to start with %q, got %q", "aes192-ctr", c)
 	}
 	if strings.Contains(c, "dummy") {
 		t.Errorf("expected Ciphers not to contain %q, got %q", "dummy", c)
+	}
+}
+
+var shellIncludeFile = []byte(`
+Host ssh-config-shell-test.example.com
+    Port 4567
+`)
+
+func TestIncludeShellHomeDirectory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping fs write in short mode")
+	}
+	testPath := filepath.Join(homedir(), "ssh-config-shell-include-test")
+	err := os.WriteFile(testPath, shellIncludeFile, 0644)
+	if err != nil {
+		t.Skipf("couldn't write SSH config file: %v", err.Error())
+	}
+	defer os.Remove(testPath)
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/include-shell"),
+	}
+	val := us.Get("ssh-config-shell-test.example.com", "Port", "")
+	if val != "4567" {
+		t.Errorf("expected to find Port=4567 in included file, got %q", val)
+	}
+}
+
+func TestGetQuotedValues(t *testing.T) {
+	us := &UserSettings{
+		userConfigFinder: testConfigFinder("testdata/quoted-identities"),
+	}
+
+	val, err := us.GetStrict("hasquotedidentity", "IdentityFile", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "/Users/testuser/.ssh/quoted_key"; val != want {
+		t.Errorf("IdentityFile with quotes: got %q, want %q", val, want)
+	}
+
+	val, err = us.GetStrict("hasunquotedidentity", "IdentityFile", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "/Users/testuser/.ssh/unquoted_key"; val != want {
+		t.Errorf("IdentityFile without quotes: got %q, want %q", val, want)
+	}
+
+	// Verify roundtripping preserves quotes in the output
+	data := loadFile(t, "testdata/quoted-identities")
+	cfg, err := Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := cfg.String(); out != string(data) {
+		t.Errorf("roundtrip mismatch:\ngot:\n%s\nwant:\n%s", out, data)
+	}
+}
+
+func TestEOLCommentSpacing(t *testing.T) {
+	// Programmatically created Host/KV with EOL comments should have a space
+	// before the '#', not "Host foo#comment".
+	pattern, err := NewPattern("example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{
+		Patterns: []*Pattern{pattern},
+		BlockData: &BlockData{
+			Nodes:      []Node{&KV{Key: "  Hostname", Value: "1.2.3.4"}},
+			EOLComment: "my comment",
+		},
+	}
+	if got := host.String(); !strings.Contains(got, "Host example #my comment") {
+		t.Errorf("expected space before Host comment, got %q", got)
+	}
+
+	kv := &KV{Key: "  Port", Value: "22", Comment: "ssh port"}
+	if got := kv.String(); !strings.Contains(got, "22 #ssh port") {
+		t.Errorf("expected space before KV comment, got %q", got)
+	}
+}
+
+func TestModernDefaults(t *testing.T) {
+	// CBC ciphers dropped.
+	if c := Default("Ciphers"); strings.Contains(c, "aes128-cbc") {
+		t.Errorf("expected default Ciphers to drop aes128-cbc, got %q", c)
+	}
+	// Post-quantum KEX added.
+	if k := Default("KexAlgorithms"); !strings.Contains(k, "mlkem768x25519-sha256") {
+		t.Errorf("expected default KexAlgorithms to include mlkem768x25519-sha256, got %q", k)
+	}
+	// Removed protocol-1 / deprecated defaults.
+	for _, key := range []string{"Cipher", "Protocol", "RSAAuthentication", "UsePrivilegedPort", "CompressionLevel"} {
+		if v := Default(key); v != "" {
+			t.Errorf("expected %s to have no default, got %q", key, v)
+		}
+	}
+	// New defaults present.
+	for _, kv := range []struct{ k, v string }{
+		{"CheckHostIP", "no"}, {"UpdateHostKeys", "yes"},
+		{"ForwardX11Timeout", "1200"}, {"RequestTTY", "auto"},
+		{"SessionType", "default"}, {"ControlPersist", "no"},
+	} {
+		if v := Default(kv.k); v != kv.v {
+			t.Errorf("Default(%q) = %q, want %q", kv.k, v, kv.v)
+		}
 	}
 }

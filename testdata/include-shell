@@ -1,0 +1,2 @@
+Host ssh-config-shell-test.example.com
+    Include ~/ssh-config-shell-include-test
